@@ -1,27 +1,39 @@
-"use strict"; Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : {default: obj};}// src/upyun.ts
-var _fs = require('fs'); var _fs2 = _interopRequireDefault(_fs);
+"use strict";
+Object.defineProperty(exports, "__esModule", {value: true});
+function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : {default: obj};} // src/upyun.ts
+var _fs = require('fs');
+var _fs2 = _interopRequireDefault(_fs);
 const _array = require("lodash/array");
 const axios = require('axios');
 const _path = require("path");
+const mime = require('mime');
+// Set the AWS Region.
+const REGION = "us-east-1";
+const that = this
+
 var utils_default = {
-	getFileByDir(list, dirPath, filePath, remoteFilePath) {
+	getFileByDir(list, dirPath, filePath, remoteFilePath, htmlPath, excludeHtml) {
 		_fs2.default.readdirSync(dirPath).map((url) => {
 			let u = dirPath + "/" + url;
 			if (url.charAt(0) !== "." && _fs2.default.existsSync(u)) {
 				if (_fs2.default.statSync(u).isDirectory()) {
-					this.getFileByDir(list, u, filePath, remoteFilePath);
-				} else {
+					this.getFileByDir(list, u, filePath, remoteFilePath, htmlPath, excludeHtml);
+				} else if (!(excludeHtml && u.endsWith('.html'))) {
+					const _filePath = u.endsWith('.html') ? htmlPath : remoteFilePath
 					list.push({
-						key: remoteFilePath + u.slice(filePath.length + 1),
+						key: _filePath + u.slice(filePath.length + 1),
 						localFile: u
 					});
 				}
 			}
 		});
 	},
-	getFileList(cb, dirPath, filePath, remoteFilePath) {
+	getFileList(cb, dirPath, filePath, remoteFilePath, htmlPath, excludeHtml) {
+		if (htmlPath && !htmlPath.endsWith('/')) {
+			htmlPath = htmlPath + '/'
+		}
 		let filesList = [];
-		this.getFileByDir(filesList, dirPath, filePath, remoteFilePath);
+		this.getFileByDir(filesList, dirPath, filePath, remoteFilePath, htmlPath, excludeHtml);
 		cb && cb(filesList);
 	}
 };
@@ -96,7 +108,9 @@ var Upload = class {
 			fileLogPath,
 			env,
 			suffix,
-			deleteOldFiles
+			deleteOldFiles,
+			htmlPath,
+			excludeHtml
 		} = option;
 		this.options = option;
 		this.filePath = filePath;
@@ -106,7 +120,9 @@ var Upload = class {
 		this.remoteFilePath = remoteFilePath || "";
 		this.fileLogPath = fileLogPath || 'log/'
 		this.env = env || 'development'
-		this.deleteOldFiles = deleteOldFiles || true
+		this.deleteOldFiles = deleteOldFiles
+		this.htmlPath = htmlPath || ''
+		this.excludeHtml = excludeHtml || false
 		this.loadSuccess = success || (() => {
 		});
 		this.loadError = error || (() => {
@@ -173,8 +189,7 @@ var Upload = class {
 			console.log(styles_default.yellow, "\u5F00\u59CB\u4E0A\u4F20...");
 			let pb = new progress_default("\u4E0A\u4F20\u8FDB\u5EA6");
 			this.filesList.map((file) => {
-				if (getToken)
-					file.token = getToken(file.key);
+				if (getToken) file.token = getToken(file.key);
 				uploadFile(file, (res, error) => {
 					this.uploadFiles.push(file);
 					if (!res) {
@@ -204,7 +219,7 @@ var Upload = class {
 
 		};
 
-		utils_default.getFileList(cb, this.filePath, this.filePath, this.remoteFilePath);
+		utils_default.getFileList(cb, this.filePath, this.filePath, this.remoteFilePath, this.htmlPath, this.excludeHtml);
 	}
 
 	// 删除重复上传的文件
@@ -292,7 +307,7 @@ var Upload = class {
 								path: e.key,
 								updateTime: new Date().toLocaleString()
 							}
-						})
+						}).filter(item => !item.path.endsWith('.html'))
 					)
 			)
 		)
@@ -311,7 +326,6 @@ var Upload = class {
 			console.log(styles_default.green, "\u006c\u006f\u0067\u65e5\u5fd7\u6587\u4ef6\u4e0a\u4f20\u5b8c\u6210\u0021 \n");
 			successFiles.push(logFile);
 			this.enabledRefresh && refreshInCloud(successFiles)
-
 		});
 	}
 
@@ -376,8 +390,9 @@ var upyun_default = UpyunUpload;
 // src/qiniu.ts
 var QiuNiuUpload = class extends upload_default {
 	constructor(opt) {
-
 		super(opt);
+		const logLocalDirPath = this.logLocalDirPath
+		const logLocalPath = this.logLocalPath
 		this.initFn = (input) => {
 			if (this.uploading)
 				return;
@@ -400,14 +415,12 @@ var QiuNiuUpload = class extends upload_default {
 			//  Can refresh 100 one time
 			let refreshQueue = _array.chunk(needRefreshArr, 100);
 			console.log(`Refreshing ${needRefreshArr.length} files...`);
-			// console.log('##########', refreshQueue);
 			refreshQueue.forEach((item, index) => {
 				item = item.map((it) => {
 					return (
 						this.publicCdnPath + it.key
 					);
 				});
-				// console.log('啊哈哈哈哈哈', item);
 				cdnManager.refreshUrls(item, function (err, respBody, respInfo) {
 					if (err) {
 						console.log(styles_default.red, '刷新链接错误', err);
@@ -416,7 +429,9 @@ var QiuNiuUpload = class extends upload_default {
 					if (respInfo.statusCode == 200) {
 						console.log(styles_default.green, "\nRefreshInCloud Files Successful \n");
 					}
-					_fs.unlinkSync(`${_this.logLocalPath}`)
+					if (_fs.readdirSync(logLocalDirPath).length !== 0) {
+						_fs.unlinkSync(`${logLocalPath}`)
+					}
 					process.exit()
 				});
 			});
@@ -471,6 +486,91 @@ var QiuNiuUpload = class extends upload_default {
 	}
 };
 var qiniu_default = QiuNiuUpload;
+
+
+var AwsUpload = class extends upload_default {
+	constructor(opt) {
+		super(opt);
+		const credentials = {
+			accessKeyId: opt.accessKey,
+			secretAccessKey: opt.secretKey,
+		}; //秘钥形式的登录上传
+		this.sdk.config.update(credentials);
+		this.sdk.config.region = REGION
+		this.cloudfront = new this.sdk.CloudFront();
+		this.bucket = new this.sdk.S3({params: {Bucket: opt.bucket}})
+		const logLocalDirPath = this.logLocalDirPath
+		const logLocalPath = this.logLocalPath
+		this.initFn = (input) => {
+			if (this.uploading)
+				return;
+			input = input.toString().trim();
+			if (["Y", "y", "YES", "yes"].indexOf(input) > -1) {
+				this.uploading = true;
+				this.init(this.uploadFile, null, this.refreshInCloud, () => {
+					this.uploading = false;
+					process.exit();
+				});
+			} else {
+				process.exit();
+			}
+		};
+		this.refreshInCloud = () => {
+			console.log(styles_default.yellow, '开始刷新...');
+			const newfilePath = this.newFileList.map(item => '/' + item.key)
+			console.log(newfilePath);
+			var params = {
+				DistributionId: opt.awsDistributionId, /* required */
+				InvalidationBatch: { /* required */
+					CallerReference: Date.now().toString(), /* required */
+					Paths: { /* required */
+						Quantity: newfilePath.length, /* required */
+						Items: newfilePath,
+					}
+				}
+			};
+			this.cloudfront.createInvalidation(params, function (err, data) {
+				if (err) console.log(err, err.stack); // an error occurred
+				else console.log(data);           // successful response
+				console.log(styles_default.green, '刷新链接成功');
+				console.log(logLocalDirPath);
+				if (_fs.readdirSync(logLocalDirPath).length !== 0) {
+					_fs.unlinkSync(`${logLocalPath}`)
+				}
+				process.exit()
+			});
+		}
+		this.confirmFn = () => {
+			console.log(styles_default.green, `---ACCESS_KEY\uFF1A${opt.accessKey}`);
+			console.log(styles_default.green, `---SECRET_KEY\uFF1A${opt.secretKey}`);
+			console.log(styles_default.green, `---\u4E0A\u4F20\u7A7A\u95F4\uFF1A${opt.bucket}`);
+			console.log(styles_default.green, `---\u7A7A\u95F4\u6587\u4EF6\u76EE\u5F55\uFF1A${this.uploadPath}`);
+			console.log(styles_default.green, `---\u672C\u5730\u6587\u4EF6\u76EE\u5F55\uFF1A${this.fileDirectory}`);
+		};
+		this.uploadFile = (file, cb) => {
+			const fileStream = _fs.createReadStream(file.localFile);
+			const fileType = mime.getType(file.localFile)
+			var params = {Key: file.key, ContentType: fileType, Body: fileStream, 'Access-Control-Allow-Credentials': '*', 'ACL': 'public-read'};
+			this.bucket.upload(params, function (error, respBody) {
+				if (error) {
+					console.log('上传错误', error);
+				}
+				cb(respBody, error);
+			});
+		};
+		this.opt = opt;
+		if (typeof this.sdk !== "object") {
+			console.log(styles_default.red, "\u8BF7\u914D\u7F6Esdk\u5E76\u4FDD\u8BC1sdk\u662F\u4E2A\u5BF9\u8C61");
+			process.exit();
+		}
+		this.uploadPath = opt.remoteFilePath || "";
+		this.fileDirectory = opt.filePath || "";
+		this.token = "";
+		this.uploading = false;
+		this.openConfirm ? this.confirm(this.confirmFn, this.initFn) : this.init(this.uploadFile, null, this.refreshInCloud);
+	}
+};
+var aws_default = AwsUpload;
 
 // src/alioss.ts
 
@@ -555,7 +655,8 @@ var alioss_default = AliOssUpload;
 var _upload = {
 	AliOssUpload: alioss_default,
 	QiuNiuUpload: qiniu_default,
-	UpyunUpload: upyun_default
+	UpyunUpload: upyun_default,
+	AwsUpload: aws_default
 }
 // var _upload = require('@puhaha/upload-oss');
 function upyunPlugin(option) {
@@ -589,4 +690,32 @@ function aliossPlugin(option) {
 	};
 }
 
-exports.aliossPlugin = aliossPlugin; exports.qiniuPlugin = qiniuPlugin; exports.upyunPlugin = upyunPlugin;
+function awsPlugin(option) {
+	return {
+		name: "aws-plugin",
+		closeBundle() {
+			new (0, _upload.AwsUpload)(option);
+		}
+	};
+}
+
+function uploadPlugin(option) {
+	try {
+		switch (option.sdkName) {
+			case 'qiniu':
+				return qiniuPlugin(option)
+			case 'aws':
+				return awsPlugin(option)
+			case 'alioss':
+				return aliossPlugin(option)
+			case 'upyun':
+				return upyunPlugin(option)
+			default:
+				break;
+		}
+	} catch (error) {
+		console.log(error);
+	}
+}
+
+exports.aliossPlugin = aliossPlugin; exports.qiniuPlugin = qiniuPlugin; exports.upyunPlugin = upyunPlugin; exports.awsPlugin = awsPlugin; exports.uploadPlugin = uploadPlugin;
