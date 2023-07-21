@@ -1,6 +1,6 @@
 # vite-plugin-upload
 
-这是基于 [@jomsou/vite-plugin-upload](https://github.com/work-flow/vite-plugin-upload)，实现上传静态资源至七牛云和aws的vite插件，可重复刷新上传和增量更新
+实现上传静态资源至七牛云和aws的vite插件，可重复刷新上传和增量更新
 
 ## 特性
 - 支持七牛云
