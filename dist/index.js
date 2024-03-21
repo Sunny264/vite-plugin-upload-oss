@@ -515,7 +515,7 @@ var AwsUpload = class extends upload_default {
 				process.exit();
 			}
 		};
-		this.refreshInCloud = () => {
+		this.refreshInCloud = async () => {
 			console.log(styles_default.yellow, '开始刷新...');
 			const newfilePath = this.newFileList.map(item => '/' + item.key)
 			console.log(newfilePath);
@@ -529,16 +529,48 @@ var AwsUpload = class extends upload_default {
 					}
 				}
 			};
-			this.cloudfront.createInvalidation(params, function (err, data) {
-				if (err) console.log(err, err.stack); // an error occurred
-				else console.log(data);           // successful response
-				console.log(styles_default.green, '刷新链接成功');
-				console.log(logLocalDirPath);
-				if (_fs.readdirSync(logLocalDirPath).length !== 0) {
-					_fs.unlinkSync(`${logLocalPath}`)
-				}
-				process.exit()
-			});
+			const promiseList = []
+			const refreshQueue1 = new Promise((resolve, reject) => {
+				this.cloudfront.createInvalidation(params, function (err, data) {
+					if (err) console.log(err, err.stack); // an error occurred
+					else console.log(data);           // successful response
+					console.log(styles_default.green, '刷新链接成功');
+					console.log(logLocalDirPath);
+					if (_fs.readdirSync(logLocalDirPath).length !== 0) {
+						_fs.unlinkSync(`${logLocalPath}`)
+					}
+					resolve()
+				});
+			})
+			promiseList.push(refreshQueue1)
+
+			const htmlPathList = newfilePath.filter(item => item.endsWith('.html'))
+
+			if (htmlPathList.length && opt.awsDistributionId2) {
+				const refreshQueue2 = new Promise((resolve, reject) => {
+					const htmlParams = {
+						DistributionId: opt.awsDistributionId2, /* required */
+						InvalidationBatch: { /* required */
+							CallerReference: Date.now().toString(), /* required */
+							Paths: { /* required */
+								Quantity: htmlPathList.length, /* required */
+								Items: htmlPathList,
+							}
+						}
+					};
+					this.cloudfront.createInvalidation(htmlParams, function (err, data) {
+						if (err) console.log(err, err.stack); // an error occurred
+						else console.log(data);           // successful response
+						console.log(styles_default.green, '子域刷新成功');
+						resolve()
+					});
+				})
+				promiseList.push(refreshQueue2)
+			}
+
+			await Promise.all(promiseList)
+			process.exit()
+
 		}
 		this.confirmFn = () => {
 			console.log(styles_default.green, `---ACCESS_KEY\uFF1A${opt.accessKey}`);

@@ -1,6 +1,6 @@
 {
     "name": "@puhaha/vite-plugin-upload-oss",
-    "version": "1.1.8",
+    "version": "1.1.9",
     "description": "上传静态资源七牛云、aws的vite插件",
     "main": "./dist/index.js",
     "scripts": {
