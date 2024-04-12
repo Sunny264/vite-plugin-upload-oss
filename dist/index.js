@@ -110,7 +110,8 @@ var Upload = class {
 			suffix,
 			deleteOldFiles,
 			htmlPath,
-			excludeHtml
+			excludeHtml,
+			deleteEmptyFiles,
 		} = option;
 		this.options = option;
 		this.filePath = filePath;
@@ -123,6 +124,7 @@ var Upload = class {
 		this.deleteOldFiles = deleteOldFiles
 		this.htmlPath = htmlPath || ''
 		this.excludeHtml = excludeHtml || false
+		this.deleteEmptyFiles = deleteEmptyFiles || false // 删除空文件
 		this.loadSuccess = success || (() => {
 		});
 		this.loadError = error || (() => {
@@ -181,7 +183,7 @@ var Upload = class {
 			return;
 		const cb = async (list) => {
 			// console.log('###########', list);
-			this.filesList = await this.handleRepeatFile(list) // 去除已经上传的文件
+			this.filesList = await this.handleRepeatAndEmptyFile(list) // 去除已经上传和空的文件
 			if (!this.filesList.length) {
 				console.log(styles_default.yellow, "未找到可以上传的文件");
 				return exit();
@@ -245,11 +247,10 @@ var Upload = class {
 		}
 	}
 
-	async handleRepeatFile(allFiles) {
+	async handleRepeatAndEmptyFile(allFiles) {
 		const _this = this
 		try {
 			console.log('get data from url:', _this.jsonFilePath)
-			// TODO:用过原生node https模块 序列化json数据的时候，数据量过大会出现 问题，没有解决到，所以换了axios来代替发送请求，如果可以舍弃axios用node模块减少依赖更好
 			const res = await axios.get(_this.jsonFilePath, {
 				params: {
 					// 避免获取最新映射资源路劲被缓存
@@ -267,8 +268,7 @@ var Upload = class {
 					_this.repeatFileList.push(e)
 				}
 			});
-			// _this.newFileList = allFiles.filter(e => !pathList.includes(e.key))
-			console.log('需要上传的新文件', _this.newFileList);
+
 		} catch (error) {
 			console.log(styles_default.yellow, 'not found file log'
 			);
@@ -280,7 +280,24 @@ var Upload = class {
 			);
 			process.exit();
 		}
-
+		if (_this.deleteEmptyFiles) {
+			_this.newFileList = _this.newFileList.filter(item => {
+				if (!item.localFile.endsWith('.js')) {
+					return true
+				}
+				// 使用statSync比readFileSync性能更好
+				const stats = _fs.statSync(item.localFile);
+				if (stats.size <= 2) {
+					console.log(styles_default.red, `删除空文件：${item.localFile}`);
+					_fs.unlinkSync(item.localFile);
+					return false
+				} else {
+					return true
+				}
+			})
+		}
+		// _this.newFileList = allFiles.filter(e => !pathList.includes(e.key))
+		console.log('需要上传的新文件', _this.newFileList);
 
 		return _this.newFileList
 	}

@@ -43,6 +43,7 @@ npm i qiniu -D
 | excludeHtml | 非必填，是否排除html文件上传 | boolean | false |
 | htmlPath | 非必填，html上传打的路径 | string | 空 |
 | awsDistributionId | 刷新aws上的资源的失效id | string |  |
+| deleteEmptyFiles | 是否删除空的js文件 | boolean | false |
 
 
 
