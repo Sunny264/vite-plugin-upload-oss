@@ -250,6 +250,8 @@ var Upload = class {
 	async handleRepeatAndEmptyFile(allFiles) {
 		const _this = this
 		try {
+			allFiles = allFiles.filter(item => !item.key.endsWith('.map'))
+			console.log(allFiles);
 			console.log('get data from url:', _this.jsonFilePath)
 			const res = await axios.get(_this.jsonFilePath, {
 				params: {
